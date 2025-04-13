@@ -26,13 +26,14 @@ from buffer import TrajectoryUniformSamplingQueue
 
 @dataclass
 class Args:
-    exp_name: str = "train"
-    seed: int = 1000
+    exp_name: str = "train" 
+    seed: int = 1000 # set seed for reproducibility
     torch_deterministic: bool = True
     cuda: bool = True
     track: bool = True
-    wandb_project_name: str = "clean_JaxGCRL_test"
-    wandb_entity: str = 'wang-kevin3290-princeton-university'
+    # wandb settings for logging
+    wandb_project_name: str = "Scaling-CRL"
+    wandb_entity: str = 'grace-zy-t-princeton-university'
     wandb_mode: str = 'offline'
     wandb_dir: str = '.'
     wandb_group: str = '.'
@@ -124,7 +125,7 @@ def residual_block(x, width, normalize, activation):
     x = x + identity
     return x
 
-class SA_encoder(nn.Module):
+class SA_encoder(nn.Module): # state action encoder
     norm_type = "layer_norm"
     network_width: int = 1024
     network_depth: int = 4
@@ -350,7 +351,7 @@ if __name__ == "__main__":
             args.goal_end_idx = 2
 
         elif "ant" in env_id and "maze" in env_id: #needed the add the ant check to differentiate with humanoid maze
-            if "gen" not in env_id:
+            if "gen" not in env_id and "sg" not in env_id:
                 from envs.ant_maze import AntMaze
                 env = AntMaze(
                     backend="spring",
@@ -359,6 +360,17 @@ if __name__ == "__main__":
                     maze_layout_name=env_id[4:]
                 )
 
+                args.obs_dim = 29
+                args.goal_start_idx = 0
+                args.goal_end_idx = 2
+            elif "gen" not in env_id and "sg" in env_id:
+                from envs.ant_maze_sg import AntMazeSG
+                env = AntMazeSG(
+                    backend="spring",
+                    exclude_current_positions_from_observation=False,
+                    terminate_when_unhealthy=True,
+                    maze_layout_name="big_maze" # TODO: we only want the big maze here for now, change it later for more single goals
+                )
                 args.obs_dim = 29
                 args.goal_start_idx = 0
                 args.goal_end_idx = 2
@@ -455,7 +467,14 @@ if __name__ == "__main__":
             args.obs_dim = 17
             args.goal_start_idx = 0
             args.goal_end_idx = 3
-            
+        elif env_id == "arm_binpick_hard_sg":
+            from envs.manipulation.arm_binpick_hard_sg import ArmBinpickHardSG
+            env = ArmBinpickHardSG(
+                backend="mjx",
+            )
+            args.obs_dim = 17
+            args.goal_start_idx = 0
+            args.goal_end_idx = 3
         elif env_id == "arm_binpick_easy_EEF":
             from envs.manipulation.arm_binpick_easy_EEF import ArmBinpickEasyEEF
             env = ArmBinpickEasyEEF(

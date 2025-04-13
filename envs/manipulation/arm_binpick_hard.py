@@ -31,16 +31,16 @@ class ArmBinpickHard(ArmEnvs):
         self.state_dim = 17
 
         self.arm_noise_scale = 0
-        self.cube_noise_scale = 0.15
+        self.cube_noise_scale = 0.15 # maybe this is noise on spawn location
         self.goal_noise_scale = 0.15
     
     def _get_initial_state(self, rng):
         rng, subkey1, subkey2 = jax.random.split(rng, 3)
-        cube_q_xy = self.sys.init_q[:2] + self.cube_noise_scale * jax.random.uniform(subkey1, [2], minval=-1)
+        cube_q_xy = self.sys.init_q[:2] + self.cube_noise_scale * jax.random.uniform(subkey1, [2], minval=-1) # TODO: removing noise here
         cube_q_remaining = self.sys.init_q[2:7]
         target_q = self.sys.init_q[7:14]
         arm_q_default = jnp.array([1.571, 0.742, 0, -1.571, 0, 3.054, 1.449, 0.04, 0.04]) # Start closer to the relevant area
-        arm_q = arm_q_default + self.arm_noise_scale * jax.random.uniform(subkey2, [self.sys.q_size() - 14], minval=-1)
+        arm_q = arm_q_default + self.arm_noise_scale * jax.random.uniform(subkey2, [self.sys.q_size() - 14], minval=-1) # TODO: remove noise here too
         
         q = jnp.concatenate([cube_q_xy] + [cube_q_remaining] + [target_q] + [arm_q])
         qd = jnp.zeros([self.sys.qd_size()])
@@ -55,7 +55,7 @@ class ArmBinpickHard(ArmEnvs):
         # Goal occupancy: is the cube close enough to the goal? 
         current_cube_pos = obs[self.completion_goal_indices]
         goal_pos = goal[:3]
-        dist = jnp.linalg.norm(current_cube_pos - goal_pos)
+        dist = jnp.linalg.norm(current_cube_pos - goal_pos) # finds distance between current cube position and goal position
 
         success = jnp.array(dist < 0.1, dtype=float)
         success_easy = jnp.array(dist < 0.3, dtype=float)

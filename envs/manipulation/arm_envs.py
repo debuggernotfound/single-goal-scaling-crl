@@ -63,7 +63,7 @@ class ArmEnvs(PipelineEnv):
             arm_angles = self._get_arm_angles(pipeline_state0)
             action = self._convert_action_to_actuator_input_joint_angle(action, arm_angles, delta_control=False)
         
-        pipeline_state = self.pipeline_step(pipeline_state0, action)
+        pipeline_state = self.pipeline_step(pipeline_state0, action) # steps through the physics simulation by one timestep
         
         #ADDING THIS HERE BASED ON MICHAL'S BUG FIX
         if "steps" in state.info.keys():

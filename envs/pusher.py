@@ -15,14 +15,16 @@ class Pusher(PipelineEnv):
     path = epath.resource_path('brax') / 'envs/assets/pusher.xml'
     sys = mjcf.load(path)
 
-    n_frames = 5
-
+    n_frames = 5  # Default number of physics simulation steps per environment step
+    # If using spring or positional physics backends:
     if backend in ['spring', 'positional']:
       sys = sys.tree_replace(dt=0.001)
-    
+      # Sets the time step for the physics simulation to 0.001 seconds
       sys = sys.replace(
           actuator=sys.actuator.replace(gear=jp.array([20.0] * sys.act_size()))
       )
+      # Sets the gear ratio to 20.0 for all actuators (motors) in the robot
+      # Higher gear ratio means more torque but slower movement
       n_frames = 50
 
     kwargs['n_frames'] = kwargs.get('n_frames', n_frames)

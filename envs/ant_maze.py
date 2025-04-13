@@ -180,7 +180,7 @@ BIG_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1],
             [1, G, G, 1, G, G, G, 1],
             [1, G, 1, G, G, 1, G, 1],
             [1, G, G, G, 1, G, G, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1]]
+            [1, 1, 1, 1, 1, 1, 1, 1]] # R means starting position for the robot
 
 BIG_MAZE_EVAL = [[1, 1, 1, 1, 1, 1, 1, 1],
                  [1, R, 0, 1, 1, G, G, 1],

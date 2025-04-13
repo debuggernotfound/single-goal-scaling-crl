@@ -3,4 +3,3 @@
 /slurm_logs
 __pycache__/
 *.pyc
-/runs

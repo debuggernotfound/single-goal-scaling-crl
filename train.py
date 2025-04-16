@@ -11,6 +11,7 @@ import wandb_osh
 import numpy as np
 import flax.linen as nn
 import jax.numpy as jnp
+import json
 
 from brax import envs
 from etils import epath
@@ -49,6 +50,9 @@ class Args:
     goal_start_idx: int = 0
     goal_end_idx: int = 0
 
+    # for running ant maze single goal 
+    goal_location: str = '{"x":4, "y":5}'
+
     # Algorithm specific arguments
     total_env_steps: int = 100000000 # 50000000
     num_epochs: int = 100 # 50
@@ -78,6 +82,8 @@ class Args:
     training_steps_multiplier: int = 1 #recommended to keep at 1
     use_all_batches: int = 0 # recommended to keep at 0
     num_sgd_batches_per_training_step: int = 800
+
+
     
     eval_actor: int = 0 # recommended to keep at 0
     # if 0, use deterministic actor for evaluation
@@ -369,7 +375,8 @@ if __name__ == "__main__":
                     backend="spring",
                     exclude_current_positions_from_observation=False,
                     terminate_when_unhealthy=True,
-                    maze_layout_name="big_maze" # TODO: we only want the big maze here for now, change it later for more single goals
+                    maze_layout_name="big_maze", # TODO: we only want the big maze here for now, change it later for more single goals
+                    goal_location=json.loads(args.goal_location)
                 )
                 args.obs_dim = 29
                 args.goal_start_idx = 0

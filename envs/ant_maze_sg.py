@@ -194,7 +194,7 @@ BIG_MAZE_SG = [[1, 1, 1, 1, 1, 1, 1, 1],
             [1, R, 0, 1, 1, 0, 0, 1],
             [1, 0, 0, 1, 0, 0, 0, 1],
             [1, 1, 0, 0, 0, 1, 1, 1],
-            [1, 0, G, 1, 0, 0, 0, 1],
+            [1, 0, 0, 1, 0, 0, 0, 1],
             [1, 0, 1, 0, 0, 1, 0, 1],
             [1, 0, 0, 0, 1, 0, 0, 1],
             [1, 1, 1, 1, 1, 1, 1, 1]] # R means starting position for the robot
@@ -203,7 +203,7 @@ BIG_MAZE_EVAL_SG = [[1, 1, 1, 1, 1, 1, 1, 1],
                  [1, R, 0, 1, 1, 0, 0, 1],
                  [1, 0, 0, 1, 0, 0, 0, 1],
                  [1, 1, 0, 0, 0, 1, 1, 1],
-                 [1, 0, G, 1, 0, 0, 0, 1],
+                 [1, 0, 0, 1, 0, 0, 0, 1],
                  [1, 0, 1, 0, 0, 1, 0, 1],
                  [1, 0, 0, 0, 1, 0, 0, 1],
                  [1, 1, 1, 1, 1, 1, 1, 1]]                 
@@ -239,7 +239,7 @@ def find_goals(structure, size_scaling):
     return jp.array(goals)
 
 # Create a xml with maze and a list of possible goal positions
-def make_maze(maze_layout_name, maze_size_scaling):
+def make_maze(maze_layout_name, maze_size_scaling, goal_location):
     if maze_layout_name == "u_maze":
         maze_layout = U_MAZE
     elif maze_layout_name == "u_maze_eval":
@@ -285,8 +285,14 @@ def make_maze(maze_layout_name, maze_size_scaling):
 
     elif maze_layout_name == "big_maze":
         maze_layout = BIG_MAZE_SG
+        i = goal_location["x"]
+        j = goal_location["y"]
+        maze_layout[i][j] = G
     elif maze_layout_name == "big_maze_eval":
         maze_layout = BIG_MAZE_EVAL_SG
+        i = goal_location["x"]
+        j = goal_location["y"]
+        maze_layout[i][j] = G
     elif maze_layout_name == "hardest_maze":
         maze_layout = HARDEST_MAZE
     else:
@@ -345,9 +351,10 @@ class AntMazeSG(PipelineEnv):
         backend="generalized",
         maze_layout_name="u_maze",
         maze_size_scaling=4.0,
+        goal_location=(4,5),
         **kwargs,
     ):
-        xml_string, possible_goals = make_maze(maze_layout_name, maze_size_scaling)
+        xml_string, possible_goals = make_maze(maze_layout_name, maze_size_scaling, goal_location)
 
         sys = mjcf.loads(xml_string)
         self.possible_goals = possible_goals

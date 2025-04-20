@@ -249,6 +249,7 @@ class TrainingState:
     actor_state: TrainState
     critic_state: TrainState
     alpha_state: TrainState
+    single_goal: jnp.ndarray
 
 class Transition(NamedTuple):
     """Container for a transition"""
@@ -547,6 +548,8 @@ if __name__ == "__main__":
         episode_length=args.episode_length,
     )
 
+    single_goal = env.possible_goals
+    jax.debug.print("SINGLE GOAL: {}", single_goal, ordered=True)
     obs_size = env.observation_size
     action_size = env.action_size
     env_keys = jax.random.split(env_key, args.num_envs)
@@ -610,6 +613,7 @@ if __name__ == "__main__":
         actor_state=actor_state,
         critic_state=critic_state,
         alpha_state=alpha_state,
+        single_goal = single_goal,
     )
 
     #Replay Buffer
@@ -661,7 +665,6 @@ if __name__ == "__main__":
         )
     
     def actor_step(training_state, env, env_state, key, extra_fields):
-        print(f"ENVIRONMENT STATE OBS: {env_state.obs}", flush=True)
         means, log_stds = actor.apply(training_state.actor_state.params, env_state.obs)
         stds = jnp.exp(log_stds)
         actions = nn.tanh( means + stds * jax.random.normal(key, shape=means.shape, dtype=means.dtype) )
@@ -775,14 +778,12 @@ if __name__ == "__main__":
             lambda x: x[:actor_batch_size], 
             transitions
         )
-        def actor_loss(actor_params, critic_params, log_alpha, transitions, key): 
+        jax.debug.print("GOAL: {}", training_state.single_goal)
+        def actor_loss(actor_params, critic_params, log_alpha, transitions, key, single_goal): 
             obs = transitions.observation           # expected_shape = batch_size, obs_size + goal_size
             state = obs[:, :args.obs_dim]
-            future_state = transitions.extras["future_state"]
-            goal = future_state[:, args.goal_start_idx : args.goal_end_idx]
-            jax.debug.print("FUTURE STATES IN ACTOR LOSS: {}", future_state, ordered=True)
-            jax.debug.print("GOAL STATES IN ACTOR LOSS: {}, {}",goal[0][0], goal[0][1], ordered=True)
-            observation = jnp.concatenate([state, goal], axis=1)
+            sg_broadcasted = jnp.broadcast_to(single_goal, (state.shape[0], single_goal.shape[0]))
+            observation = jnp.concatenate([state, sg_broadcasted], axis=1)
 
             means, log_stds = actor.apply(actor_params, observation)
             stds = jnp.exp(log_stds)
@@ -794,7 +795,7 @@ if __name__ == "__main__":
 
             sa_encoder_params, g_encoder_params = critic_params["sa_encoder"], critic_params["g_encoder"]
             sa_repr = sa_encoder.apply(sa_encoder_params, state, action)
-            g_repr = g_encoder.apply(g_encoder_params, goal)
+            g_repr = g_encoder.apply(g_encoder_params, single_goal)
 
             qf_pi = -jnp.sqrt(jnp.sum((sa_repr - g_repr) ** 2, axis=-1))
 
@@ -810,7 +811,7 @@ if __name__ == "__main__":
             alpha_loss = alpha * jnp.mean(jax.lax.stop_gradient(-log_prob - target_entropy))
             return jnp.mean(alpha_loss)
         
-        (actorloss, log_prob), actor_grad = jax.value_and_grad(actor_loss, has_aux=True)(training_state.actor_state.params, training_state.critic_state.params, training_state.alpha_state.params['log_alpha'], transitions, key)
+        (actorloss, log_prob), actor_grad = jax.value_and_grad(actor_loss, has_aux=True)(training_state.actor_state.params, training_state.critic_state.params, training_state.alpha_state.params['log_alpha'], transitions, key, training_state.single_goal)
         new_actor_state = training_state.actor_state.apply_gradients(grads=actor_grad)
 
         alphaloss, alpha_grad = jax.value_and_grad(alpha_loss)(training_state.alpha_state.params, log_prob)
@@ -834,7 +835,7 @@ if __name__ == "__main__":
             lambda x: x[:critic_batch_size], 
             transitions
         )
-        def critic_loss(critic_params, transitions, key):
+        def critic_loss(critic_params, transitions, key, single_goal):
             sa_encoder_params, g_encoder_params = critic_params["sa_encoder"], critic_params["g_encoder"]
             
             obs = transitions.observation[:, :args.obs_dim]
@@ -842,21 +843,24 @@ if __name__ == "__main__":
             
             sa_repr = sa_encoder.apply(sa_encoder_params, obs, action)
             g_repr = g_encoder.apply(g_encoder_params, transitions.observation[:, args.obs_dim:])
-             
+            sg_repr = g_encoder.apply(g_encoder_params, single_goal)
+            sg_repr = jnp.broadcast_to(sg_repr, sa_repr.shape)
             # InfoNCE
-            logits = -jnp.sqrt(jnp.sum((sa_repr[:, None, :] - g_repr[None, :, :]) ** 2, axis=-1))       # shape = BxB
-            critic_loss = -jnp.mean(jnp.diag(logits) - jax.nn.logsumexp(logits, axis=1))
+            logits = -jnp.sqrt(jnp.sum((sa_repr[:, None, :] - g_repr[None, :, :]) ** 2, axis=-1)) 
+            critic_loss_term1 = jnp.diag(logits) - jax.nn.logsumexp(logits, axis=1)         # shape = BxB
+            #TODO: DIMENSION MAY NOT BE RIGHT
+            added_logits = -jnp.sqrt(jnp.sum((sa_repr[:, :] - sg_repr) ** 2, axis=-1)) 
+            critic_loss_term2 = jax.nn.logsumexp(added_logits)
+            critic_loss = -jnp.mean(critic_loss_term1) + critic_loss_term2
 
             # logsumexp regularisation
             logsumexp = jax.nn.logsumexp(logits + 1e-6, axis=1)
             critic_loss += args.logsumexp_penalty_coeff * jnp.mean(logsumexp**2)
 
             I, correct, logits_pos, logits_neg = jnp.zeros(1), jnp.zeros(1), jnp.zeros(1), jnp.zeros(1)
-                
-
             return critic_loss, (logsumexp, I, correct, logits_pos, logits_neg)
             
-        (loss, (logsumexp, I, correct, logits_pos, logits_neg)), grad = jax.value_and_grad(critic_loss, has_aux=True)(training_state.critic_state.params, transitions, key)
+        (loss, (logsumexp, I, correct, logits_pos, logits_neg)), grad = jax.value_and_grad(critic_loss, has_aux=True)(training_state.critic_state.params, transitions, key, training_state.single_goal)
         new_critic_state = training_state.critic_state.apply_gradients(grads=grad)
         training_state = training_state.replace(critic_state = new_critic_state)
 

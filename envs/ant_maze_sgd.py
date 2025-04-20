@@ -30,19 +30,6 @@ U_MAZE_EVAL = [[1, 1, 1, 1, 1],
                [1, G, G, G, 1],
                [1, 1, 1, 1, 1]]
 
-U_MAZE_SG = [[1, 1, 1, 1, 1],
-          [1, R, 0, 0, 1],
-          [1, 1, 1, 0, 1],
-          [1, G, 0, 0, 1],
-          [1, 1, 1, 1, 1]]
-
-U_MAZE_SG_EVAL = [[1, 1, 1, 1, 1],
-               [1, R, 0, 0, 1],
-               [1, 1, 1, 0, 1],
-               [1, G, 0, 0, 1],
-               [1, 1, 1, 1, 1]]
-
-
 U_MAZE_SINGLE_EVAL = [[1, 1, 1, 1, 1],
                [1, R, 0, 0, 1],
                [1, 1, 1, 0, 1],
@@ -85,13 +72,6 @@ U2_MAZE_EVAL = [[1, 1, 1, 1, 1, 1],
                 [1, 1, 1, 1, 0, 1],
                 [1, G, G, G, G, 1],
                 [1, 1, 1, 1, 1, 1]]
-
-U2_MAZE_SG = [[1, 1, 1, 1, 1, 1],
-           [1, R, 0, 0, 0, 1],
-           [1, 1, 1, 1, 0, 1],
-           [1, G, 0, 0, 0, 1],
-           [1, 1, 1, 1, 1, 1]]
-
 
 U3_MAZE = [[1, 1, 1, 1, 1, 1, 1],
            [1, R, G, G, G, G, 1],
@@ -255,25 +235,13 @@ def find_goals(structure, size_scaling):
             if structure[i][j] == GOAL:
                 goals.append([i * size_scaling, j * size_scaling])
                 # print(f"possible goal: {goals[-1]}")
+
     return jp.array(goals)
 
-def find_single_goal(structure, size_scaling):
-    goal = []
-    for i in range(len(structure)):
-        for j in range(len(structure[0])):
-            if structure[i][j] == GOAL:
-                goal = jp.array([i * size_scaling, j * size_scaling])
-                jax.debug.print("GOAL: {}", goal)
-                return goal
-                # print(f"possible goal: {goals[-1]}")
 # Create a xml with maze and a list of possible goal positions
 def make_maze(maze_layout_name, maze_size_scaling, goal_location):
     if maze_layout_name == "u_maze":
         maze_layout = U_MAZE
-    elif maze_layout_name == "u_maze_sg":
-        maze_layout = U_MAZE_SG
-    elif maze_layout_name == "u2_maze_sg":
-        maze_layout = U2_MAZE_SG
     elif maze_layout_name == "u_maze_eval":
         maze_layout = U_MAZE_EVAL
     elif maze_layout_name == "u_maze_single_eval":
@@ -314,13 +282,12 @@ def make_maze(maze_layout_name, maze_size_scaling, goal_location):
         maze_layout = U7_MAZE_EVAL
     elif maze_layout_name == "u5_maze_single_eval":
         maze_layout = U5_MAZE_SINGLE_EVAL
-    elif maze_layout_name == "big_maze_sg":
+
+    elif maze_layout_name == "big_maze":
         maze_layout = BIG_MAZE_SG
         i = goal_location["x"]
         j = goal_location["y"]
         maze_layout[i][j] = G
-        jax.debug.print("GOAL_LOCATION: {}, {}", i, j, ordered=True)
-        jax.debug.print("MAZE: {}", maze_layout, ordered=True)
     elif maze_layout_name == "big_maze_eval":
         maze_layout = BIG_MAZE_EVAL_SG
         i = goal_location["x"]
@@ -334,7 +301,7 @@ def make_maze(maze_layout_name, maze_size_scaling, goal_location):
     xml_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'assets', "ant_maze.xml")
 
     robot_x, robot_y = find_robot(maze_layout, maze_size_scaling)
-    single_goal = find_single_goal(maze_layout, maze_size_scaling)
+    possible_goals = find_goals(maze_layout, maze_size_scaling)
 
     tree = ET.parse(xml_path)
     worldbody = tree.find(".//worldbody")
@@ -367,9 +334,9 @@ def make_maze(maze_layout_name, maze_size_scaling, goal_location):
     tree = tree.getroot()
     xml_string = ET.tostring(tree)
     
-    return xml_string, single_goal
+    return xml_string, possible_goals
 
-class AntMazeSG(PipelineEnv):
+class AntMazeSGD(PipelineEnv):
     def __init__(
         self,
         ctrl_cost_weight=0.5,
@@ -385,12 +352,18 @@ class AntMazeSG(PipelineEnv):
         maze_layout_name="u_maze",
         maze_size_scaling=4.0,
         goal_location=(4,5),
+        diversity_penalty_weight=3000,  # New parameter for diversity penalty
+        diversity_threshold=0.75,  # Distance threshold for considering positions as "same"
         **kwargs,
     ):
         xml_string, possible_goals = make_maze(maze_layout_name, maze_size_scaling, goal_location)
 
         sys = mjcf.loads(xml_string)
         self.possible_goals = possible_goals
+        self.diversity_penalty_weight = diversity_penalty_weight
+        self.diversity_threshold = diversity_threshold
+        self.previous_positions = []  # Track previous positions
+        self.max_positions = 10  # Keep track of last 10 positions
 
         n_frames = 5
 
@@ -419,7 +392,6 @@ class AntMazeSG(PipelineEnv):
         kwargs["n_frames"] = kwargs.get("n_frames", n_frames)
 
         super().__init__(sys=sys, backend=backend, **kwargs)
-
 
         self._ctrl_cost_weight = ctrl_cost_weight
         self._use_contact_forces = use_contact_forces
@@ -507,7 +479,23 @@ class AntMazeSG(PipelineEnv):
         dist = jp.linalg.norm(obs[:2] - obs[-2:])
         success = jp.array(dist < 0.5, dtype=float)
         success_easy = jp.array(dist < 2., dtype=float)
-        reward = -dist + healthy_reward - ctrl_cost - contact_cost
+
+        # Calculate diversity penalty
+        current_pos = pipeline_state.x.pos[0, :2]  # Current x,y position
+        diversity_penalty = 0.0
+        
+        if len(self.previous_positions) > 0:
+            # Calculate minimum distance to any previous position
+            min_dist_to_previous = min(jp.linalg.norm(current_pos - prev_pos) for prev_pos in self.previous_positions)
+            if min_dist_to_previous < self.diversity_threshold:
+                diversity_penalty = self.diversity_penalty_weight * (self.diversity_threshold - min_dist_to_previous)
+        
+        # Update previous positions
+        self.previous_positions.append(current_pos)
+        if len(self.previous_positions) > self.max_positions:
+            self.previous_positions.pop(0)
+
+        reward = -dist + healthy_reward - ctrl_cost - contact_cost - diversity_penalty
         state.metrics.update(
             reward_forward=forward_reward,
             reward_survive=healthy_reward,
@@ -521,7 +509,8 @@ class AntMazeSG(PipelineEnv):
             forward_reward=forward_reward,
             dist=dist,
             success=success,
-            success_easy=success_easy
+            success_easy=success_easy,
+            diversity_penalty=diversity_penalty  # Add diversity penalty to metrics
         )
         state.info.update(info)
         return state.replace(

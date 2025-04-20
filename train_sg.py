@@ -548,7 +548,7 @@ if __name__ == "__main__":
         episode_length=args.episode_length,
     )
 
-    single_goal = env.possible_goals
+    single_goal = env.possible_goals[0]
     jax.debug.print("SINGLE GOAL: {}", single_goal, ordered=True)
     obs_size = env.observation_size
     action_size = env.action_size
@@ -778,7 +778,6 @@ if __name__ == "__main__":
             lambda x: x[:actor_batch_size], 
             transitions
         )
-        jax.debug.print("GOAL: {}", training_state.single_goal)
         def actor_loss(actor_params, critic_params, log_alpha, transitions, key, single_goal): 
             obs = transitions.observation           # expected_shape = batch_size, obs_size + goal_size
             state = obs[:, :args.obs_dim]
@@ -971,7 +970,7 @@ if __name__ == "__main__":
             k, train_key = jax.random.split(k, 2)
             (ts, es, bs,), metrics = training_step(ts, es, bs, train_key, t)
             return (ts, es, bs, k), metrics
-
+        jax.debug.print("Steps: {}, Multiplier: {}, Product: {}", args.num_training_steps_per_epoch, args.training_steps_multiplier, args.num_training_steps_per_epoch * args.training_steps_multiplier)
         (training_state, env_state, buffer_state, key), metrics = jax.lax.scan(f, (training_state, env_state, buffer_state, key), jnp.arange(args.num_training_steps_per_epoch * args.training_steps_multiplier))
 
         

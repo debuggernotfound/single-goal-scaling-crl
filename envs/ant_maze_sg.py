@@ -262,7 +262,7 @@ def find_single_goal(structure, size_scaling):
     for i in range(len(structure)):
         for j in range(len(structure[0])):
             if structure[i][j] == GOAL:
-                goal = jp.array([i * size_scaling, j * size_scaling])
+                goal = jp.array([[i * size_scaling, j * size_scaling]])
                 jax.debug.print("GOAL: {}", goal)
                 return goal
                 # print(f"possible goal: {goals[-1]}")
@@ -335,7 +335,7 @@ def make_maze(maze_layout_name, maze_size_scaling, goal_location):
 
     robot_x, robot_y = find_robot(maze_layout, maze_size_scaling)
     single_goal = find_single_goal(maze_layout, maze_size_scaling)
-
+    jax.debug.print("Single Goal: {}", single_goal, ordered=True)
     tree = ET.parse(xml_path)
     worldbody = tree.find(".//worldbody")
 
@@ -390,6 +390,7 @@ class AntMazeSG(PipelineEnv):
         xml_string, possible_goals = make_maze(maze_layout_name, maze_size_scaling, goal_location)
 
         sys = mjcf.loads(xml_string)
+        jax.debug.print("possible goals from maze layout {}", possible_goals, ordered=True)
         self.possible_goals = possible_goals
 
         n_frames = 5
@@ -450,6 +451,7 @@ class AntMazeSG(PipelineEnv):
         # set the target q, qd
         _, target = self._random_target(rng)
         jax.debug.print("Target After Reset: {}", target, ordered=True)
+        jax.debug.print("Self Possible Goals: {}", self.possible_goals, ordered=True)
         q = q.at[-2:].set(target)
         qd = qd.at[-2:].set(0)
 
@@ -535,7 +537,6 @@ class AntMazeSG(PipelineEnv):
         qvel = pipeline_state.qd[:-2]
 
         target_pos = pipeline_state.x.pos[-1][:2]
-
         if self._exclude_current_positions_from_observation:
             qpos = qpos[2:]
 
@@ -544,4 +545,4 @@ class AntMazeSG(PipelineEnv):
     def _random_target(self, rng: jax.Array) -> Tuple[jax.Array, jax.Array]:
         """Returns a random target location chosen from possibilities specified in the maze layout."""
         # idx = jax.random.randint(rng, (1,), 0, len(self.possible_goals))
-        return self.possible_goals
+        return rng, self.possible_goals[0]

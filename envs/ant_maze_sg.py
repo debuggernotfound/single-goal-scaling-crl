@@ -449,6 +449,7 @@ class AntMazeSG(PipelineEnv):
 
         # set the target q, qd
         _, target = self._random_target(rng)
+        jax.debug.print("Target After Reset: {}", target, ordered=True)
         q = q.at[-2:].set(target)
         qd = qd.at[-2:].set(0)
 
@@ -542,5 +543,5 @@ class AntMazeSG(PipelineEnv):
 
     def _random_target(self, rng: jax.Array) -> Tuple[jax.Array, jax.Array]:
         """Returns a random target location chosen from possibilities specified in the maze layout."""
-        idx = jax.random.randint(rng, (1,), 0, len(self.possible_goals))
-        return rng, jp.array(self.possible_goals[idx])[0]
+        # idx = jax.random.randint(rng, (1,), 0, len(self.possible_goals))
+        return self.possible_goals

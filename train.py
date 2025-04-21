@@ -661,7 +661,6 @@ if __name__ == "__main__":
         )
     
     def actor_step(training_state, env, env_state, key, extra_fields):
-        print(f"ENVIRONMENT STATE OBS: {env_state.obs}", flush=True)
         means, log_stds = actor.apply(training_state.actor_state.params, env_state.obs)
         stds = jnp.exp(log_stds)
         actions = nn.tanh( means + stds * jax.random.normal(key, shape=means.shape, dtype=means.dtype) )
@@ -780,8 +779,6 @@ if __name__ == "__main__":
             state = obs[:, :args.obs_dim]
             future_state = transitions.extras["future_state"]
             goal = future_state[:, args.goal_start_idx : args.goal_end_idx]
-            jax.debug.print("FUTURE STATES IN ACTOR LOSS: {}", future_state, ordered=True)
-            jax.debug.print("GOAL STATES IN ACTOR LOSS: {}, {}",goal[0][0], goal[0][1], ordered=True)
             observation = jnp.concatenate([state, goal], axis=1)
 
             means, log_stds = actor.apply(actor_params, observation)

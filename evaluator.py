@@ -46,7 +46,6 @@ class CrlEvaluator():
     def run_evaluation(self, training_state, training_metrics, aggregate_episodes = True):
       """Run one epoch of evaluation."""
       self._key, unroll_key = jax.random.split(self._key)
-      jax.debug.print("SINGLE GOAL (eval): {}", training_state.single_goal)
       t = time.time()
       eval_state = self._generate_eval_unroll(training_state, unroll_key)
       eval_metrics = eval_state.info["eval_metrics"]

@@ -6,7 +6,7 @@
 #SBATCH --mem-per-cpu=64G                 # Memory per CPU core
 #SBATCH --gres=gpu:1                     # Number of GPUs per node
 #SBATCH --constraint=gpu80                # GPU type
-#SBATCH --time 1:00:00                 # Time limit (hh:mm:ss)
+#SBATCH --time 4:00:00                 # Time limit (hh:mm:ss)
 #SBATCH --output=slurm_logs/slurm-%j.out       # Output file (%j = job ID)
 
 module purge
